@@ -1,8 +1,5 @@
 # Tutorials
 
-These tutorials introduce a few fundamental concepts in deep learning and how to implement them in _MXNet_. The _Basics_ section contains tutorials on manipulating arrays, building networks, loading/preprocessing data, etc. The _Training and Inference_ section talks about implementing Linear Regression, training a Handwritten digit classifier using MLP and CNN, running inferences using a pre-trained model, and lastly, efficiently training a large scale image classifier.
-
-
 ## Gluon
 
 Gluon is the high-level interface for MXNet. It is more intuitive and easier to use than the lower level interface.
@@ -31,6 +28,8 @@ please see [gluon.mxnet.io](http://gluon.mxnet.io).
 - [Training on multiple GPUs with gluon](http://gluon.mxnet.io/chapter07_distributed-learning/multiple-gpus-gluon.html)
 
 ## MXNet
+
+These tutorials introduce a few fundamental concepts in deep learning and how to implement them in _MXNet_. The _Basics_ section contains tutorials on manipulating arrays, building networks, loading/preprocessing data, etc. The _Training and Inference_ section talks about implementing Linear Regression, training a Handwritten digit classifier using MLP and CNN, running inferences using a pre-trained model, and lastly, efficiently training a large scale image classifier.
 
 ### Basics
 
