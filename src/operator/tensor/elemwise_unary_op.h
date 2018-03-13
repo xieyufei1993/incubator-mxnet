@@ -318,7 +318,7 @@ class UnaryOp : public OpBase {
     if (in_stype == out_stype && (in_stype == kRowSparseStorage || in_stype == kCSRStorage)) {
       MapToFCompute<xpu>(attrs, ctx, inputs, req, outputs, IdentityCompute<xpu>);
     } else {
-      LOG(FATAL) << "Not implemented: " << operator_string(attrs, ctx, inputs, req, outputs);
+      LogUnimplementedOp(attrs, ctx, inputs, req, outputs);
     }
   }
 
@@ -338,7 +338,7 @@ class UnaryOp : public OpBase {
       // csr, _ -> csr, or rsp, _ -> rsp
       OpBase::CopyNDArray(ctx.get_stream<xpu>(), &outputs[0], req[0], inputs[0]);
     } else {
-      LOG(FATAL) << "Not implemented: " << operator_string(attrs, ctx, inputs, req, outputs);
+      LogUnimplementedOp(attrs, ctx, inputs, req, outputs);
     }
   }
 };
@@ -352,11 +352,7 @@ struct CastParam : public dmlc::Parameter<CastParam> {
   int dtype;
   DMLC_DECLARE_PARAMETER(CastParam) {
     DMLC_DECLARE_FIELD(dtype)
-    .add_enum("float32", mshadow::kFloat32)
-    .add_enum("float64", mshadow::kFloat64)
-    .add_enum("float16", mshadow::kFloat16)
-    .add_enum("uint8", mshadow::kUint8)
-    .add_enum("int32", mshadow::kInt32)
+    MXNET_ADD_ALL_TYPES
     .describe("Output data type.");
   }
 };

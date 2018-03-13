@@ -18,12 +18,13 @@
  */
 #include <gtest/gtest.h>
 #include <mxnet/tensor_blob.h>
-#include <numeric>
 #include "../../src/operator/nn/activation-inl.h"
 #include "../../src/operator/operator_tune-inl.h"
 #include "../include/test_op_runner.h"
 #include "../include/test_core_op.h"
 #include "../include/test_tune.h"
+
+#if MXNET_USE_OPERATOR_TUNING
 
 using namespace mxnet;
 
@@ -31,7 +32,8 @@ using namespace mxnet;
  * \brief ActivationOp timing test for CPU
  */
 TEST(OMP_TUNING, ShowAllTunedOps) {
-  const std::unordered_set<std::string>& op_names = op::OperatorTune<float>::TunedOperatorNames();
+  const std::unordered_set<std::string>& op_names =
+    mxnet::op::OperatorTune<float>::TunedOperatorNames();
   for (auto iter = op_names.begin(), e_iter = op_names.end(); iter != e_iter; ++iter) {
     std::cout << *iter << std::endl;
   }
@@ -171,4 +173,6 @@ TEST(OMP_TUNING, EvaluateTuneTestInt64) {
   const float result = EvaluateTune<DType>();
   std::cout << "Success rate for type " << test::type_name<DType>() << ": " << result << std::endl;
 }
+
+#endif  // MXNET_USE_OPERATOR_TUNING
 

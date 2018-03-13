@@ -45,7 +45,6 @@
 #include <utility>
 #include "./c_api_common.h"
 #include "../operator/custom/custom-inl.h"
-#include "../engine/profiler.h"
 
 using namespace mxnet;
 
@@ -94,41 +93,6 @@ int MXRandomSeed(int seed) {
 int MXNotifyShutdown() {
   API_BEGIN();
   Engine::Get()->NotifyShutdown();
-  API_END();
-}
-
-int MXSetProfilerConfig(int mode, const char* filename) {
-  // mode, kOnlySymbolic: 0, kAllOperator: 1
-  API_BEGIN();
-#if MXNET_USE_PROFILER
-  engine::Profiler::Get()->SetConfig(engine::Profiler::ProfilerMode(mode), std::string(filename));
-#else
-  LOG(FATAL) << "Need to compile with USE_PROFILER=1 for MXNet Profiler";
-#endif
-  API_END();
-}
-
-int MXDumpProfile() {
-  API_BEGIN();
-#if MXNET_USE_PROFILER
-  engine::Profiler *profiler = engine::Profiler::Get();
-  CHECK(profiler->IsEnableOutput())
-    << "Profiler haven't been run. Config and start profiler first";
-  engine::Profiler::Get()->DumpProfile();
-#else
-  LOG(FATAL) << "Need to compile with USE_PROFILER=1 for MXNet Profiler";
-#endif
-  API_END()
-}
-
-int MXSetProfilerState(int state) {
-  // state, kNotRunning: 0, kRunning: 1
-  API_BEGIN();
-#if MXNET_USE_PROFILER
-  engine::Profiler::Get()->SetState(engine::Profiler::ProfilerState(state));
-#else
-  LOG(FATAL) << "Need to compile with USE_PROFILER=1 for MXNet Profiler";
-#endif
   API_END();
 }
 
@@ -339,6 +303,40 @@ int MXNDArrayLoad(const char* fname,
   std::vector<std::string> &names = ret->ret_vec_str;
   {
     std::unique_ptr<dmlc::Stream> fi(dmlc::Stream::Create(fname, "r"));
+    mxnet::NDArray::Load(fi.get(), &data, &names);
+  }
+  ret->ret_handles.resize(data.size());
+  for (size_t i = 0; i < data.size(); ++i) {
+    NDArray *ptr = new NDArray();
+    *ptr = data[i];
+    ret->ret_handles[i] = ptr;
+  }
+  ret->ret_vec_charp.resize(names.size());
+  for (size_t i = 0; i < names.size(); ++i) {
+    ret->ret_vec_charp[i] = names[i].c_str();
+  }
+  *out_size = static_cast<mx_uint>(data.size());
+  *out_arr = dmlc::BeginPtr(ret->ret_handles);
+  *out_name_size = static_cast<mx_uint>(names.size());
+  *out_names = dmlc::BeginPtr(ret->ret_vec_charp);
+  API_END();
+}
+
+int MXNDArrayLoadFromBuffer(const void *ndarray_buffer,
+                            size_t size,
+                            mx_uint *out_size,
+                            NDArrayHandle** out_arr,
+                            mx_uint *out_name_size,
+                            const char*** out_names) {
+  MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
+  ret->ret_vec_str.clear();
+  API_BEGIN();
+  CHECK_NOTNULL(ndarray_buffer);
+  std::vector<NDArray> data;
+  std::vector<std::string> &names = ret->ret_vec_str;
+  {
+    std::unique_ptr<dmlc::MemoryFixedSizeStream> fi(new dmlc::MemoryFixedSizeStream(
+        const_cast<void*>(ndarray_buffer), size));
     mxnet::NDArray::Load(fi.get(), &data, &names);
   }
   ret->ret_handles.resize(data.size());
@@ -1170,7 +1168,7 @@ int MXRtcFree(RtcHandle handle) {
 
 int MXCustomOpRegister(const char* op_type, CustomOpPropCreator creator) {
   API_BEGIN();
-  mxnet::op::custom::Registry::Get()->Register(op_type, creator);
+  mxnet::op::custom::CustomOperator::Get()->Register(op_type, creator);
   API_END();
 }
 
@@ -1179,24 +1177,24 @@ int MXRtcCudaModuleCreate(const char* source, int num_options,
                           const char** options, int num_exports,
                           const char** exports, CudaModuleHandle *out) {
   API_BEGIN();
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA && MXNET_ENABLE_CUDA_RTC
   std::vector<std::string> str_opts;
   for (int i = 0; i < num_options; ++i) str_opts.emplace_back(options[i]);
   std::vector<std::string> str_exports;
   for (int i = 0; i < num_exports; ++i) str_exports.emplace_back(exports[i]);
   *out = new rtc::CudaModule(source, str_opts, str_exports);
 #else
-  LOG(FATAL) << "Compile with USE_CUDA=1 to use GPU.";
+  LOG(FATAL) << "Compile with USE_CUDA=1 and ENABLE_CUDA_RTC=1 to have CUDA runtime compilation.";
 #endif
   API_END();
 }
 
 int MXRtcCudaModuleFree(CudaModuleHandle handle) {
   API_BEGIN();
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA && MXNET_ENABLE_CUDA_RTC
   delete reinterpret_cast<rtc::CudaModule*>(handle);
 #else
-  LOG(FATAL) << "Compile with USE_CUDA=1 to use GPU.";
+  LOG(FATAL) << "Compile with USE_CUDA=1 and ENABLE_CUDA_RTC=1 to have CUDA runtime compilation.";
 #endif
   API_END();
 }
@@ -1205,7 +1203,7 @@ int MXRtcCudaKernelCreate(CudaModuleHandle handle, const char* name, int num_arg
                           int* is_ndarray, int* is_const, int* arg_types,
                           CudaKernelHandle *out) {
   API_BEGIN();
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA && MXNET_ENABLE_CUDA_RTC
   auto module = reinterpret_cast<rtc::CudaModule*>(handle);
   std::vector<rtc::CudaModule::ArgType> signature;
   for (int i = 0; i < num_args; ++i) {
@@ -1216,17 +1214,17 @@ int MXRtcCudaKernelCreate(CudaModuleHandle handle, const char* name, int num_arg
   auto kernel = module->GetKernel(name, signature);
   *out = new std::shared_ptr<rtc::CudaModule::Kernel>(kernel);
 #else
-  LOG(FATAL) << "Compile with USE_CUDA=1 to use GPU.";
+  LOG(FATAL) << "Compile with USE_CUDA=1 and ENABLE_CUDA_RTC=1 to have CUDA runtime compilation.";
 #endif
   API_END();
 }
 
 int MXRtcCudaKernelFree(CudaKernelHandle handle) {
   API_BEGIN();
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA && MXNET_ENABLE_CUDA_RTC
   delete reinterpret_cast<std::shared_ptr<rtc::CudaModule::Kernel>*>(handle);
 #else
-  LOG(FATAL) << "Compile with USE_CUDA=1 to use GPU.";
+  LOG(FATAL) << "Compile with USE_CUDA=1 and ENABLE_CUDA_RTC=1 to have CUDA runtime compilation.";
 #endif
   API_END();
 }
@@ -1237,7 +1235,7 @@ int MXRtcCudaKernelCall(CudaKernelHandle handle, int dev_id, void** args,
                         mx_uint block_dim_y, mx_uint block_dim_z,
                         mx_uint shared_mem) {
   API_BEGIN();
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA && MXNET_ENABLE_CUDA_RTC
   auto kernel = reinterpret_cast<std::shared_ptr<rtc::CudaModule::Kernel>*>(handle);
   const auto& signature = (*kernel)->signature();
   std::vector<dmlc::any> any_args;
@@ -1253,7 +1251,7 @@ int MXRtcCudaKernelCall(CudaKernelHandle handle, int dev_id, void** args,
   (*kernel)->Launch(Context::GPU(dev_id), any_args, grid_dim_x, grid_dim_y,
                     grid_dim_z, block_dim_x, block_dim_y, block_dim_z, shared_mem);
 #else
-  LOG(FATAL) << "Compile with USE_CUDA=1 to use GPU.";
+  LOG(FATAL) << "Compile with USE_CUDA=1 and ENABLE_CUDA_RTC=1 to have CUDA runtime compilation.";
 #endif
   API_END();
 }
